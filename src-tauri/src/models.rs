@@ -35,3 +35,51 @@ pub struct Session {
     pub duracion_minutos: Option<i32>,
     pub ejercicios: Vec<Ejercicio>,
 }
+
+// --- DTOs para métricas del Dashboard ---
+
+#[derive(Debug, Serialize)]
+pub struct SessionSummary {
+    pub id: i64,
+    pub fecha: String,
+    pub dia_rutina: Option<i32>,
+    pub energia: Option<i32>,
+    pub suenio_horas: Option<f64>,
+    pub duracion_minutos: Option<i32>,
+    pub ejercicios_realizados: i32,
+    pub series_totales: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExerciseSummary {
+    pub id: i32,
+    pub nombre: String,
+    pub grupo_muscular: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExerciseProgression {
+    pub semana: String,
+    pub peso_maximo: Option<f64>,
+    pub reps_maximas: Option<i32>,
+    pub esfuerzo_promedio: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MuscleVolume {
+    pub grupo_muscular: String,
+    pub series_totales: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExerciseNote {
+    pub fecha: String,
+    pub serie: i32,
+    pub notas: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionVolume {
+    pub fecha: String,
+    pub tonelaje_total: f64,
+}
