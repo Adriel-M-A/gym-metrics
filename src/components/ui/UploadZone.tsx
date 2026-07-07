@@ -1,50 +1,48 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { UploadCloud, FileJson, AlertCircle, CheckCircle2 } from "lucide-react";
+import { UploadCloud, FileJson, AlertCircle } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { SessionSchema } from "../../types/session";
+import { useSessionStore } from "../../store/useSessionStore";
 
-type UploadState = "idle" | "success" | "error";
-
-/** Parsea el texto JSON y actualiza el estado del componente según el resultado */
-function processContent(
-  content: string,
-  name: string,
-  setters: {
-    setUploadState: (s: UploadState) => void;
-    setFileName: (s: string | null) => void;
-    setMessage: (s: string | null) => void;
-    setPreview: (s: string | null) => void;
-  }
-) {
-  try {
-    const parsed = JSON.parse(content);
-    const keys = Object.keys(parsed);
-    setters.setUploadState("success");
-    setters.setFileName(name);
-    setters.setMessage("Archivo leído correctamente.");
-    setters.setPreview(`Claves detectadas: ${keys.join(", ")}`);
-  } catch {
-    setters.setUploadState("error");
-    setters.setMessage("El contenido del archivo no es un JSON válido. Verificá que esté bien formado.");
-    setters.setFileName(null);
-    setters.setPreview(null);
-  }
-}
+type UploadState = "idle" | "error";
 
 export default function UploadZone() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
-  const [message, setMessage] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const setSession = useSessionStore((state) => state.setSession);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const setters = { setUploadState, setFileName, setMessage, setPreview };
+  /** Valida el JSON con Zod y actualiza el Zustand store si es correcto */
+  const validateAndSetJson = (jsonString: string) => {
+    try {
+      const rawJson = JSON.parse(jsonString);
+      const result = SessionSchema.safeParse(rawJson);
 
-  /** Listener de drag-drop nativo de Tauri 2 — recibe rutas del OS */
+      if (!result.success) {
+        // Formatear los errores de Zod de forma amigable en español
+        const errors = result.error.issues.map((issue) => {
+          const field = issue.path.join(" -> ");
+          return `Campo "${field}": ${issue.message}`;
+        });
+        setUploadState("error");
+        setErrorMessage(`El archivo JSON no cumple con la estructura requerida:\n${errors.slice(0, 3).join("\n")}`);
+        return;
+      }
+
+      setUploadState("idle");
+      setErrorMessage(null);
+      setSession(result.data);
+    } catch {
+      setUploadState("error");
+      setErrorMessage("El contenido del archivo no es un JSON válido. Verificá que esté bien formado.");
+    }
+  };
+
+  /** Listener de drag-drop nativo de Tauri 2 */
   useEffect(() => {
-    // Guardamos la Promise directamente para el cleanup, evitando race condition
     const unlistenPromise = getCurrentWebview().onDragDropEvent(async (event) => {
       if (event.payload.type === "over") {
         setIsDragging(true);
@@ -58,20 +56,16 @@ export default function UploadZone() {
 
         if (!name.endsWith(".json")) {
           setUploadState("error");
-          setMessage("El archivo tiene que tener extensión .json");
-          setFileName(null);
-          setPreview(null);
+          setErrorMessage("Por favor, subí únicamente archivos con extensión .json");
           return;
         }
 
         try {
           const content = await readTextFile(filePath);
-          processContent(content, name, setters);
+          validateAndSetJson(content);
         } catch {
           setUploadState("error");
-          setMessage("No se pudo leer el archivo. Verificá que tengas acceso a esa ruta.");
-          setFileName(null);
-          setPreview(null);
+          setErrorMessage("No se pudo leer el archivo. Verificá que la aplicación tenga permisos.");
         }
       } else {
         setIsDragging(false);
@@ -83,7 +77,7 @@ export default function UploadZone() {
     };
   }, []);
 
-  /** Fallback: selección manual con input file nativo del browser */
+  /** Fallback: selector de archivos manual */
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -91,15 +85,15 @@ export default function UploadZone() {
 
     if (!file.name.endsWith(".json")) {
       setUploadState("error");
-      setMessage("El archivo tiene que tener extensión .json");
-      setFileName(null);
-      setPreview(null);
+      setErrorMessage("Por favor, subí únicamente archivos con extensión .json");
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      processContent(ev.target?.result as string, file.name, setters);
+      if (typeof ev.target?.result === "string") {
+        validateAndSetJson(ev.target.result);
+      }
     };
     reader.readAsText(file);
   }, []);
@@ -108,7 +102,13 @@ export default function UploadZone() {
 
   return (
     <div className="w-full max-w-2xl flex flex-col gap-4">
-      <input ref={inputRef} type="file" accept=".json" onChange={handleFileInput} className="hidden" />
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".json"
+        onChange={handleFileInput}
+        className="hidden"
+      />
 
       <div
         onClick={handleClick}
@@ -137,21 +137,12 @@ export default function UploadZone() {
         </p>
       </div>
 
-      {uploadState === "success" && fileName && (
-        <div className="flex flex-col gap-2 p-4 rounded-lg bg-emerald-950/30 border border-emerald-900/50 text-emerald-400">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 size={20} className="shrink-0" />
-            <p className="text-sm font-medium">{message}</p>
+      {uploadState === "error" && errorMessage && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-red-950/30 border border-red-900/50 text-red-400">
+          <AlertCircle size={20} className="shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm whitespace-pre-line leading-relaxed">
+            {errorMessage}
           </div>
-          <p className="text-xs text-emerald-600 font-mono pl-8">{fileName}</p>
-          {preview && <p className="text-xs text-emerald-700 font-mono pl-8 mt-1">{preview}</p>}
-        </div>
-      )}
-
-      {uploadState === "error" && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-950/30 border border-red-900/50 text-red-400">
-          <AlertCircle size={20} className="shrink-0" />
-          <p className="text-sm">{message}</p>
         </div>
       )}
     </div>
