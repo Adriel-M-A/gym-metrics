@@ -1,10 +1,19 @@
 import "./App.css";
+import AppLayout from "./components/layout/AppLayout";
+import HomeView from "./pages/HomeView";
+import DashboardView from "./pages/DashboardView";
+import SettingsView from "./pages/SettingsView";
+import { useAppStore } from "./store/useAppStore";
 
 function App() {
+  const currentView = useAppStore((state) => state.currentView);
+
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <h1 className="text-3xl font-bold text-brand-neon">Gym Metrics</h1>
-    </div>
+    <AppLayout>
+      {currentView === "home" && <HomeView />}
+      {currentView === "dashboard" && <DashboardView />}
+      {currentView === "settings" && <SettingsView />}
+    </AppLayout>
   );
 }
 

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-neon: #39FF14;
+  --color-brand-primary: #3b82f6;
 }
 
 @layer base {
